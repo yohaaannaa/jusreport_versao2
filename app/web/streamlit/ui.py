@@ -89,7 +89,7 @@ def exibir_cabecalho() -> None:
 
 def api_health() -> dict:
     try:
-        r = requests.get(f"{API_BASE}/health", timeout=10)
+        r = requests.get(f"{API_BASE}/health", timeout=60)
         r.raise_for_status()
         data = r.json()
         data.setdefault("api_reachable", True)
