@@ -2,7 +2,6 @@ import os
 import uuid
 import io
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -665,8 +664,8 @@ def _run_execucao_agents(
     base_text: str, case_number: str, action_type: str
 ) -> tuple[str, dict]:
     """
-    Envia sub-tarefas ao Gemini em PARALELO (ThreadPoolExecutor)
-    e monta o relatório final em Markdown.
+    Envia sub-tarefas ao Gemini SEQUENCIALMENTE para economizar memória
+    no plano gratuito do Render (512MB RAM).
     """
     if not text_model:
         raise RuntimeError("Modelo Gemini não configurado (text_model=None).")
@@ -674,20 +673,13 @@ def _run_execucao_agents(
     tasks = _build_tasks(action_type)
     sections: dict[str, str] = {}
 
-    # Paralelo: reduz tempo total de N * latência_média para ~latência_máxima
-    with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-        futures = {
-            executor.submit(_call_gemini, task, base_text): task["key"]
-            for task in tasks
-        }
-        for future in as_completed(futures):
-            try:
-                key, text = future.result()
-                sections[key] = text
-            except Exception as e:
-                key = futures[future]
-                print(f"[ERRO] Sub-tarefa '{key}' falhou: {e}")
-                sections[key] = f"Erro ao processar esta seção: {e}"
+    for task in tasks:
+        try:
+            key, text = _call_gemini(task, base_text)
+            sections[key] = text
+        except Exception as e:
+            print(f"[ERRO] Sub-tarefa '{task['key']}' falhou: {e}")
+            sections[task["key"]] = f"Erro ao processar esta seção: {e}"
 
     from datetime import date
     data_geracao = date.today().strftime("%d de %B de %Y").replace(
